@@ -19,7 +19,7 @@ struct ContentView: View {
     @State var angle: Float = 0
 
     @State var presented: Bool = false
-    @State var isConnected: Bool = true // Bluetooth.shared.current != nil { didSet { if isConnected { presented.toggle() } } }
+    @State var isConnected: Bool = Bluetooth.shared.current != nil { didSet { if isConnected { presented.toggle() } } }
     @State var list = [Bluetooth.Device]()
     @State var string: String = ""
     @State var state: Bool = false
@@ -27,18 +27,40 @@ struct ContentView: View {
     @State var rssi: Int = 0
     @State var response = Data()
     @State var speed: Float = 40
+    @State var dir: Direction = .stop
+    
+    enum Direction: Int {
+        case stop = 0
+        case up
+        case left
+        case down
+        case right
+    }
+    
+    private var signal: Double {
+//        A more strong connection is between -30 to -55
+//       • A strong connection starts from -55 to -67
+//       • A terrible connection starts from -80 to -90
+//       • An unusable connection starts from -90 and below
+        var percentage = 0.0
+        if rssi > -55 { percentage = 1 }
+        else if rssi > -67 { percentage = 0.74 }
+        else if rssi > -80 { percentage = 0.5 }
+        else if rssi > -90 { percentage = 0.25 }
+        return percentage
+    }
     
     var body: some View {
         VStack {
             HStack{
                 Text("Car:")
-                Button("scan"){ presented.toggle() }.buttonStyle(AppButton()).padding()
+                Button("scan") { presented.toggle() }.buttonStyle(AppButton()).padding()
                 Spacer()
                 if isConnected {
                     Button("disconnect"){ bluetooth.disconnect() }.buttonStyle(AppButton()).padding()
-                    Image(systemName: "cellularbars", variableValue: 0.5)
+                    Image(systemName: "cellularbars", variableValue: signal)
                         .foregroundStyle(.green)
-                    Text("\(rssi)")
+                    Text("\(rssi)").monospaced()
                 }
             }
             Spacer()
@@ -46,7 +68,7 @@ struct ContentView: View {
                 HStack {
                     ArcKnob("", value: $speed, range: 0...100, origin: 0)
                         .backgroundColor(.orange)
-                        .foregroundColor(.red)
+                        .foregroundColor(.accentColor)
                         //.squareFrame(300)
                         .overlay {
                             VStack {
@@ -76,8 +98,8 @@ struct ContentView: View {
             }
             else {
                 ArcKnob("", value: $speed, range: 0...100, origin: 0)
-                    .backgroundColor(.orange)
-                    .foregroundColor(.red)
+                    .backgroundColor(Color("BWMColor"))
+                    .foregroundColor(.yellow)
                     .squareFrame(300)
                     .overlay {
                         VStack {
@@ -86,20 +108,16 @@ struct ContentView: View {
                                 .resizable()
                                 .squareFrame(50)
                                 .padding(.bottom, 50)
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(Color.accentColor, .secondary)
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle( Color("BWMColor"))
                         }
                     }
                 Spacer()
                 Joystick(radius: $radius, angle: $angle)
                     .backgroundColor(Color.secondary)
-                    .foregroundColor(Color.accentColor)
+                    .foregroundColor(Color("BWMColor"))
                     .cornerRadius(10)
                     .squareFrame(200)
-                Text("radius: \(radius), angle: \(angle)")
-                    .foregroundColor(.secondary)
-                    .font(.system(.caption))
-                    .monospaced()
             }
             Spacer()
             HStack {
@@ -132,8 +150,44 @@ struct ContentView: View {
             Spacer()
         }
         .padding()
-        .sheet(isPresented: $presented){ ScanView(bluetooth: bluetooth, presented: $presented, list: $list, isConnected: $isConnected) }
-            .onAppear{ bluetooth.delegate = self }
+        .sheet(isPresented: $presented) {
+            ScanView(bluetooth: bluetooth, presented: $presented, list: $list, isConnected: $isConnected) }
+        .onAppear{
+            bluetooth.delegate = self
+        }
+        .onChange(of: radius) { newValue in
+            calculateDir(radius: newValue, angle: angle)
+        }
+        .onChange(of: angle) { newValue in
+            calculateDir(radius: radius, angle: newValue)
+        }
+        .onChange(of: dir) { newValue in
+            sendControlComand(dir: newValue)
+        }
+    }
+}
+
+extension ContentView {
+    private func calculateDir(radius: Float, angle: Float) {
+        if radius < 0.5 {
+            dir = .stop
+        } else {
+            if angle > 0.12 && angle <= 0.37 {
+                dir = .left
+            } else if angle > 0.37 && angle <= 0.62 {
+                dir = .up
+            } else if angle > 0.62 && angle <= 0.87 {
+                dir = .right
+            } else {
+                dir = .down
+            }
+        }
+    }
+    
+    private func sendControlComand(dir: Direction) {
+        let cmd = UInt8(truncatingIfNeeded: dir.rawValue)
+        let cmdVal = [cmd]//withUnsafeBytes(of: dir.rawValue.bigEndian, Array.init)
+        bluetooth.send(cmdVal)
     }
 }
 

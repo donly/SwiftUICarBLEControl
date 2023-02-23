@@ -125,14 +125,14 @@ extension Bluetooth: CBPeripheralDelegate {
             switch characteristic.properties {
             case .read:
                 readCharacteristic = characteristic
-            case .write:
+            case .write, CBCharacteristicProperties(rawValue: 30):
                 writeCharacteristic = characteristic
             case .notify:
                 notifyCharacteristic = characteristic
                 peripheral.setNotifyValue(true, for: characteristic)
             case .indicate: break //print("indicate")
             case .broadcast: break //print("broadcast")
-            default: break
+            default: print(characteristic.properties)
             }
         }
     }
