@@ -61,6 +61,11 @@ final class Bluetooth: NSObject {
         current?.writeValue(Data(value), for: characteristic, type: .withResponse)
     }
     
+    func send(_ data: Data) {
+        guard let characteristic = writeCharacteristic else { return }
+        current?.writeValue(data, for: characteristic, type: .withResponse)
+    }
+    
     enum State { case unknown, resetting, unsupported, unauthorized, poweredOff, poweredOn, error, connected, disconnected }
     
     struct Device: Identifiable {

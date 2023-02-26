@@ -27,7 +27,11 @@ struct ContentView: View {
     @State var rssi: Int = 0
     @State var response = Data()
     @State var speed: Float = 40
+    @State var speedInt: Int = 40
     @State var dir: Direction = .stop
+    @State var isBeep = false
+    @State var isLightOn = false
+    @State var motionMode: MotionMode = .ble
     
     enum Direction: Int {
         case stop = 0
@@ -35,6 +39,12 @@ struct ContentView: View {
         case left
         case down
         case right
+    }
+    
+    enum MotionMode: UInt8 {
+        case auto = 0xc
+        case avoid = 0xd
+        case ble = 0xe
     }
     
     private var signal: Double {
@@ -53,11 +63,11 @@ struct ContentView: View {
     var body: some View {
         VStack {
             HStack{
-                Text("Car:")
-                Button("scan") { presented.toggle() }.buttonStyle(AppButton()).padding()
+                Button(isConnected ? "\(bluetooth.current?.name ?? "NO_NAME")" : "Choose a Car \(Image(systemName: "chevron.right"))") { presented.toggle() }.buttonStyle(AppButton()).padding()
+                    .font(.system(size: 14))
                 Spacer()
                 if isConnected {
-                    Button("disconnect"){ bluetooth.disconnect() }.buttonStyle(AppButton()).padding()
+                    Button("Disconnect"){ bluetooth.disconnect() }.buttonStyle(AppButton()).padding().font(.system(size: 14))
                     Image(systemName: "cellularbars", variableValue: signal)
                         .foregroundStyle(.green)
                     Text("\(rssi)").monospaced()
@@ -97,9 +107,7 @@ struct ContentView: View {
                 }
             }
             else {
-                ArcKnob("", value: $speed, range: 0...100, origin: 0)
-                    .backgroundColor(Color("BWMColor"))
-                    .foregroundColor(.yellow)
+                SpeedKnob("", value: $speed, range: 0...100, origin: 0)
                     .squareFrame(300)
                     .overlay {
                         VStack {
@@ -109,35 +117,60 @@ struct ContentView: View {
                                 .squareFrame(50)
                                 .padding(.bottom, 50)
                                 .symbolRenderingMode(.hierarchical)
-                                .foregroundStyle( Color("BWMColor"))
+                                .foregroundStyle(Color.accentColor)
                         }
                     }
                 Spacer()
                 Joystick(radius: $radius, angle: $angle)
                     .backgroundColor(Color.secondary)
-                    .foregroundColor(Color("BWMColor"))
+                    .foregroundColor(.accentColor)
                     .cornerRadius(10)
                     .squareFrame(200)
             }
             Spacer()
             HStack {
-                
                 Button {
-                    
+                    sendControlCommand(cmd: isLightOn ? [0x8] : [0x7])
+                    isLightOn.toggle()
                 } label: {
-                    Label("Light", systemImage: "headlight.high.beam")
+                    Label("Light", systemImage: isLightOn ? "headlight.high.beam.fill" : "headlight.high.beam")
                 }
                 Button {
-                    
+                    sendControlCommand(cmd: isBeep ? [0x6] : [0x5])
+                    isBeep.toggle()
                 } label: {
-                    Label("Beep", systemImage: "speaker.wave.2.fill")
+                    Label("Beep", systemImage: isBeep ? "speaker.slash" : "speaker.wave.2.fill")
                 }
                 Button {
-                    
+                    switch motionMode {
+                    case .ble:
+                        motionMode = .auto
+                    case .auto:
+                        motionMode = .avoid
+                    case .avoid:
+                        motionMode = .ble
+                    }
+                    let cmd = UInt8(truncatingIfNeeded: motionMode.rawValue)
+                    let cmdVal = Data([cmd])
+                    sendControlCommand(data: cmdVal)
                 } label: {
-                    Label("Track", systemImage: "point.topleft.down.curvedto.point.filled.bottomright.up")
+                    switch motionMode {
+                    case .ble:
+                        Label {
+                            Text("BLE")
+                        } icon: {
+                            Image("bluetooth")
+                                .renderingMode(.template)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 22)
+                        }
+                    case .auto:
+                        Label("Track", systemImage: "point.topleft.down.curvedto.point.filled.bottomright.up")
+                    case .avoid:
+                        Label("Avoid", systemImage: "car.top.radiowaves.front.fill")
+                    }
                 }
-                
             }
             .buttonStyle(FunctionalButton())
 //            if isConnected {
@@ -162,7 +195,14 @@ struct ContentView: View {
             calculateDir(radius: radius, angle: newValue)
         }
         .onChange(of: dir) { newValue in
-            sendControlComand(dir: newValue)
+            sendDirComand(dir: newValue)
+        }
+        .onChange(of: speed) { newValue in
+            speedInt = Int(speed)
+        }
+        .onChange(of: speedInt) { newValue in
+            guard let data = "\(8):\(newValue)".data(using: .utf8) else { return }
+            sendControlCommand(data: data)
         }
     }
 }
@@ -184,10 +224,18 @@ extension ContentView {
         }
     }
     
-    private func sendControlComand(dir: Direction) {
+    private func sendDirComand(dir: Direction) {
         let cmd = UInt8(truncatingIfNeeded: dir.rawValue)
-        let cmdVal = [cmd]//withUnsafeBytes(of: dir.rawValue.bigEndian, Array.init)
-        bluetooth.send(cmdVal)
+        let cmdVal = Data([cmd])
+        sendControlCommand(data: cmdVal)
+    }
+    
+    private func sendControlCommand(cmd: [UInt8]) {
+        bluetooth.send(cmd)
+    }
+    
+    private func sendControlCommand(data: Data) {
+        bluetooth.send(data)
     }
 }
 
