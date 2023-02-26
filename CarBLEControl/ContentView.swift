@@ -246,8 +246,7 @@ struct ContentView: View {
             speedInt = Int(speed)
         }
         .onChange(of: speedInt) { newValue in
-            guard let data = "\(8):\(newValue)".data(using: .utf8) else { return }
-            sendControlCommand(data: data)
+            sendControlCommand(cmd: [0x11, 0x58, UInt8(newValue)])
         }
         .onReceive(timer) { _ in
             if isConnected {
@@ -259,7 +258,7 @@ struct ContentView: View {
             guard let response = String(data: newValue, encoding: .utf8), response.count > 3 else { return }
             let cmdValues = response.components(separatedBy: ":")
             guard let cmd = cmdValues.first, let valStr = cmdValues.last, let val = Int(valStr) else { return }
-            if cmd == "16" { // 电量检测
+            if cmd == "16" { // battery level cmd
                 if (val < 1600) {
                     batteryLevel = .empty
                 } else if (val < 1900) {
