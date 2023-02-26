@@ -30,7 +30,7 @@ struct ContentView: View {
     @State var speedInt: Int = 40
     @State var dir: Direction = .stop
     @State var isBeep = false
-    @State var isLightOn = false
+    @State var lightMode: LightMode = .off
     @State var motionMode: MotionMode = .ble
     
     enum Direction: Int {
@@ -45,6 +45,12 @@ struct ContentView: View {
         case auto = 0xc
         case avoid = 0xd
         case ble = 0xe
+    }
+    
+    enum LightMode: UInt8 {
+        case on = 0x7
+        case off = 0x8
+        case auto = 0xf
     }
     
     private var signal: Double {
@@ -130,10 +136,26 @@ struct ContentView: View {
             Spacer()
             HStack {
                 Button {
-                    sendControlCommand(cmd: isLightOn ? [0x8] : [0x7])
-                    isLightOn.toggle()
+                    switch lightMode {
+                    case .auto:
+                        lightMode = .on
+                    case .on:
+                        lightMode = .off
+                    case .off:
+                        lightMode = .auto
+                    }
+                    let cmd = UInt8(truncatingIfNeeded: lightMode.rawValue)
+                    let cmdVal = Data([cmd])
+                    sendControlCommand(data: cmdVal)
                 } label: {
-                    Label("Light", systemImage: isLightOn ? "headlight.high.beam.fill" : "headlight.high.beam")
+                    switch lightMode {
+                    case .auto:
+                        Label("Auto", systemImage: "auto.headlight.high.beam.fill")
+                    case .on:
+                        Label("On", systemImage: "headlight.high.beam")
+                    case .off:
+                        Label("Off", systemImage: "headlight.high.beam.fill")
+                    }
                 }
                 Button {
                     sendControlCommand(cmd: isBeep ? [0x6] : [0x5])
