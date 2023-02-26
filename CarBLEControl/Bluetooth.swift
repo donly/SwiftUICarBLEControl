@@ -56,6 +56,20 @@ final class Bluetooth: NSObject {
         manager?.stopScan()
     }
     
+    func startListening() {
+        guard let current = current, let characteristic = writeCharacteristic else { return }
+        current.setNotifyValue(true, for: characteristic)
+    }
+    
+    func stopListening() {
+        func startListening() {
+            guard let current = current, let characteristic = writeCharacteristic else { return }
+            if characteristic.isNotifying {
+                current.setNotifyValue(false, for: characteristic)
+            }
+        }
+    }
+    
     func send(_ value: [UInt8]) {
         guard let characteristic = writeCharacteristic else { return }
         current?.writeValue(Data(value), for: characteristic, type: .withResponse)
@@ -142,7 +156,10 @@ extension Bluetooth: CBPeripheralDelegate {
         }
     }
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor descriptor: CBDescriptor, error: Error?) { }
-    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) { }
+    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        guard let value = characteristic.value else { return }
+        delegate?.value(data: value)
+    }
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard let value = characteristic.value else { return }
         delegate?.value(data: value)

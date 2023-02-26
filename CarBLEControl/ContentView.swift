@@ -32,6 +32,10 @@ struct ContentView: View {
     @State var isBeep = false
     @State var lightMode: LightMode = .off
     @State var motionMode: MotionMode = .ble
+    @State var batteryLevel: BatteryLevel = .low
+    
+    let timer = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
+
     
     enum Direction: Int {
         case stop = 0
@@ -53,6 +57,14 @@ struct ContentView: View {
         case auto = 0xf
     }
     
+    enum BatteryLevel: UInt8 {
+        case empty = 0
+        case low = 25
+        case middle = 50
+        case high = 75
+        case full = 100
+    }
+    
     private var signal: Double {
 //        A more strong connection is between -30 to -55
 //       • A strong connection starts from -55 to -67
@@ -66,17 +78,35 @@ struct ContentView: View {
         return percentage
     }
     
+    private var signalColor: Color {
+        if rssi > -55 { return .green }
+        else if rssi > -67 { return .yellow }
+        else if rssi > -80 { return .orange }
+        else { return .red }
+    }
+    
+    private var batteryColor: Color {
+        switch batteryLevel {
+        case .empty: return .red
+        case .low: return .orange
+        case .middle: return .yellow
+        case .high, .full: return .green
+        }
+    }
+    
     var body: some View {
         VStack {
-            HStack{
-                Button(isConnected ? "\(bluetooth.current?.name ?? "NO_NAME")" : "Choose a Car \(Image(systemName: "chevron.right"))") { presented.toggle() }.buttonStyle(AppButton()).padding()
+            HStack {
+                Button(isConnected ? "\(bluetooth.current?.name ?? "NO_NAME")" : "Choose a Car \(Image(systemName: "chevron.right"))") { presented.toggle() }.buttonStyle(AppButton()).padding(.leading)
                     .font(.system(size: 14))
+                Image(systemName: "battery.\(batteryLevel.rawValue)").foregroundColor(batteryColor)
+                    .opacity(isConnected ? 1 : 0)
                 Spacer()
                 if isConnected {
-                    Button("Disconnect"){ bluetooth.disconnect() }.buttonStyle(AppButton()).padding().font(.system(size: 14))
+                    Button("Disconnect"){ bluetooth.disconnect() }.buttonStyle(AppButton()).font(.system(size: 14))
                     Image(systemName: "cellularbars", variableValue: signal)
-                        .foregroundStyle(.green)
-                    Text("\(rssi)").monospaced()
+                        .foregroundStyle(signalColor)
+                    Text("\(rssi)").font(.system(size: 14)).monospaced()
                 }
             }
             Spacer()
@@ -195,13 +225,6 @@ struct ContentView: View {
                 }
             }
             .buttonStyle(FunctionalButton())
-//            if isConnected {
-//                TextField("cmd", text: $string, onEditingChanged: { editing = $0 })
-//                    .onChange(of: string){ bluetooth.send(Array($0.utf8)) }
-//                    .textFieldStyle(AppTextField(focused: $editing))
-//                Text("returned byte value from \(bluetooth.current?.name ?? ""): \(response.hex)")
-//                Text("returned string: \(String(data: response, encoding: .utf8) ?? "")")
-//            }
             Spacer()
         }
         .padding()
@@ -225,6 +248,30 @@ struct ContentView: View {
         .onChange(of: speedInt) { newValue in
             guard let data = "\(8):\(newValue)".data(using: .utf8) else { return }
             sendControlCommand(data: data)
+        }
+        .onReceive(timer) { _ in
+            if isConnected {
+                bluetooth.startListening()
+                sendControlCommand(cmd: [0x10])
+            }
+        }
+        .onChange(of: response) { newValue in
+            guard let response = String(data: newValue, encoding: .utf8), response.count > 3 else { return }
+            let cmdValues = response.components(separatedBy: ":")
+            guard let cmd = cmdValues.first, let valStr = cmdValues.last, let val = Int(valStr) else { return }
+            if cmd == "16" { // 电量检测
+                if (val < 1600) {
+                    batteryLevel = .empty
+                } else if (val < 1900) {
+                    batteryLevel = .low
+                } else if (val < 2200) {
+                    batteryLevel = .middle
+                } else if (val < 2500) {
+                    batteryLevel = .high
+                } else {
+                    batteryLevel = .full
+                }
+            }
         }
     }
 }
